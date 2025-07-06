@@ -1,77 +1,108 @@
+# xabarnoma_boti.py
 import sqlite3
+import time
 
-def get_conn():
-    return sqlite3.connect("bot.db")
+def dasturni_boshlash():
+    print("""
+    ******************************
+    * XABARNOMA YUBORUVCHI BOT   *
+    ******************************
+    """)
 
-def add_user(user_id):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)")
-    cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-    conn.commit()
-    conn.close()
+def maqolni_korsat():
+    print("\nBot vazifasi:")
+    print("""
+    Ushbu bot orqali siz ro'yxatdan o'tgan barcha foydalanuvchilarga  
+    bir vaqtning o'zida xabarnoma yuborishingiz mumkin. Xabarlar  
+    SMS yoki elektron pochta orqali yuborilishi mumkin.
+    """)
 
-def get_user_count():
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM users")
-    count = cur.fetchone()[0]
-    conn.close()
-    return count
+def menyuni_korsat():
+    print("\nMenyu:")
+    print("1. Foydalanuvchilar ro'yxati")
+    print("2. Xabar yuborish")
+    print("3. Hisobot")
+    print("4. Chiqish")
+    return input("Tanlang (1-4): ")
 
-def add_kino_code(code, channel, message_id, post_count):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS kino_codes (
-        code TEXT PRIMARY KEY,
-        channel TEXT,
-        message_id INTEGER,
-        post_count INTEGER
-    )""")
-    cur.execute("INSERT OR REPLACE INTO kino_codes (code, channel, message_id, post_count) VALUES (?, ?, ?, ?)",
-                (code, channel, message_id, post_count))
-    conn.commit()
-    conn.close()
-
-def get_kino_by_code(code):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT channel, message_id, post_count FROM kino_codes WHERE code = ?", (code,))
-    data = cur.fetchone()
-    conn.close()
-    return data
-
-def get_all_codes():
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM kino_codes")
-    data = cur.fetchall()
-    conn.close()
-    return data
-
-def send_message_to_all_users(message):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM users")
-    users = cur.fetchall()
+def foydalanuvchilarni_korsat():
+    boglanma = sqlite3.connect('foydalanuvchilar.db')
+    kurs = boglanma.cursor()
     
-    for user in users:
-        user_id = user[0]
-        # Bu yerda xabar yuborish logikasini qo'shishingiz kerak
-        print(f"Xabar yuborilmoqda: {message} foydalanuvchiga {user_id}")
-        # Masalan, Telegram API orqali xabar yuborish
-        # bot.send_message(chat_id=user_id, text=message)
+    print("\nFoydalanuvchilar ro'yxati:")
+    print("{:<5} {:<15} {:<15} {:<20}".format("ID", "Ism", "Telefon", "Ro'yxatdan o'tgan sana"))
+    print("-" * 60)
     
-    conn.close()
+    for row in kurs.execute("SELECT * FROM foydalanuvchilar"):
+        print("{:<5} {:<15} {:<15} {:<20}".format(row[0], row[1], row[2], row[3]))
+    
+    boglanma.close()
+    input("\nDavom etish uchun Enter tugmasini bosing...")
 
-# Misol uchun, foydalanuvchilarni qo'shish va xabar yuborish
+def xabar_yubor():
+    print("\nXabar yuborish:")
+    mavzu = input("Xabar mavzusi: ")
+    matn = input("Xabar matni: ")
+    
+    qabul_qiluvchilar = foydalanuvchilarni_olish()
+    if not qabul_qiluvchilar:
+        print("Hech qanday foydalanuvchi topilmadi!")
+        return
+    
+    print(f"\nXabar {len(qabul_qiluvchilar)} ta foydalanuvchiga yuborilmoqda...")
+    for foydalanuvchi in qabul_qiluvchilar:
+        print(f"{foydalanuvchi[1]} ({foydalanuvchi[2]}) ga xabar yuborilmoqda...")
+        # SMS yoki e-mail yuborish logikasi shu joyga qo'shiladi
+        time.sleep(0.5)  # Demo uchun kutish
+    
+    print("\nXabarlar muvaffaqiyatli yuborildi!")
+    input("Davom etish uchun Enter tugmasini bosing...")
+
+def foydalanuvchilarni_olish():
+    boglanma = sqlite3.connect('foydalanuvchilar.db')
+    kurs = boglanma.cursor()
+    kurs.execute("SELECT * FROM foydalanuvchilar")
+    natijalar = kurs.fetchall()
+    boglanma.close()
+    return natijalar
+
+def hisobot():
+    boglanma = sqlite3.connect('foydalanuvchilar.db')
+    kurs = boglanma.cursor()
+    
+    # Foydalanuvchilar soni
+    kurs.execute("SELECT COUNT(*) FROM foydalanuvchilar")
+    foydalanuvchilar_soni = kurs.fetchone()[0]
+    
+    print(f"\nJami foydalanuvchilar: {foydalanuvchilar_soni}")
+    
+    # Oxirgi 5 ta xabar
+    print("\nOxirgi 5 ta yuborilgan xabar:")
+    for row in kurs.execute("SELECT * FROM xabarlar ORDER BY yuborilgan_sana DESC LIMIT 5"):
+        print(f"{row[2]} | {row[3]} | {row[5]} ta foydalanuvchiga yuborilgan")
+    
+    boglanma.close()
+    input("\nDavom etish uchun Enter tugmasini bosing...")
+
+def asosiy():
+    dbni_boshlash()
+    dasturni_boshlash()
+    maqolni_korsat()
+    
+    while True:
+        tanlov = menyuni_korsat()
+        
+        if tanlov == "1":
+            foydalanuvchilarni_korsat()
+        elif tanlov == "2":
+            xabar_yubor()
+        elif tanlov == "3":
+            hisobot()
+        elif tanlov == "4":
+            print("Dastur tugatildi. Xayr!")
+            break
+        else:
+            print("Noto'g'ri tanlov! Qaytadan urinib ko'ring.")
+
 if __name__ == "__main__":
-    # Foydalanuvchilarni qo'shish
-    add_user(123456789)
-    add_user(987654321)
-
-    # Foydalanuvchilar sonini olish
-    print(f"Jami foydalanuvchilar: {get_user_count()}")
-
-    # Xabar yuborish
-    send_message_to_all_users("Salom, bu xabar barcha foydalanuvchilarga yuborildi!")
+    asosiy()
