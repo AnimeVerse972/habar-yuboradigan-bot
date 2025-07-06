@@ -1,108 +1,86 @@
-# xabarnoma_boti.py
 import sqlite3
-import time
+from telegram import Bot, Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+import os
 
-def dasturni_boshlash():
-    print("""
-    ******************************
-    * XABARNOMA YUBORUVCHI BOT   *
-    ******************************
-    """)
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
-def maqolni_korsat():
-    print("\nBot vazifasi:")
-    print("""
-    Ushbu bot orqali siz ro'yxatdan o'tgan barcha foydalanuvchilarga  
-    bir vaqtning o'zida xabarnoma yuborishingiz mumkin. Xabarlar  
-    SMS yoki elektron pochta orqali yuborilishi mumkin.
-    """)
+# ADMINLAR RO'YXATI - BU YERGA O'Z ID'LARINGIZNI QO'YING
+ADMIN_IDS = [6486825926]  # Misol: [123456789, 987654321]
 
-def menyuni_korsat():
-    print("\nMenyu:")
-    print("1. Foydalanuvchilar ro'yxati")
-    print("2. Xabar yuborish")
-    print("3. Hisobot")
-    print("4. Chiqish")
-    return input("Tanlang (1-4): ")
+def get_conn():
+    return sqlite3.connect("bot.db")
 
-def foydalanuvchilarni_korsat():
-    boglanma = sqlite3.connect('foydalanuvchilar.db')
-    kurs = boglanma.cursor()
+async def send_message_to_all_users(context: CallbackContext, message: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT user_id FROM users")
+    users = cur.fetchall()
     
-    print("\nFoydalanuvchilar ro'yxati:")
-    print("{:<5} {:<15} {:<15} {:<20}".format("ID", "Ism", "Telefon", "Ro'yxatdan o'tgan sana"))
-    print("-" * 60)
+    success = 0
+    failed = 0
     
-    for row in kurs.execute("SELECT * FROM foydalanuvchilar"):
-        print("{:<5} {:<15} {:<15} {:<20}".format(row[0], row[1], row[2], row[3]))
+    for user in users:
+        try:
+            await context.bot.send_message(
+                chat_id=user[0],
+                text=message
+            )
+            success += 1
+        except Exception as e:
+            print(f"Xatolik (ID: {user[0]}): {e}")
+            failed += 1
     
-    boglanma.close()
-    input("\nDavom etish uchun Enter tugmasini bosing...")
+    conn.close()
+    return success, failed
 
-def xabar_yubor():
-    print("\nXabar yuborish:")
-    mavzu = input("Xabar mavzusi: ")
-    matn = input("Xabar matni: ")
+def add_user_to_db(user_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)")
+    cur.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+    conn.commit()
+    conn.close()
+
+async def start(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    add_user_to_db(user_id)
+    await update.message.reply_text(
+        "👋 Assalomu alaykum! Men sizga muhim xabarlarni yuborish uchun botman.\n\n"
+        "Agar admin bo'lsangiz, /send buyrug'i orqali xabar yuborishingiz mumkin."
+    )
+
+async def send_to_all(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
     
-    qabul_qiluvchilar = foydalanuvchilarni_olish()
-    if not qabul_qiluvchilar:
-        print("Hech qanday foydalanuvchi topilmadi!")
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Sizda bunday buyruqni bajarish huquqi yo'q!")
         return
     
-    print(f"\nXabar {len(qabul_qiluvchilar)} ta foydalanuvchiga yuborilmoqda...")
-    for foydalanuvchi in qabul_qiluvchilar:
-        print(f"{foydalanuvchi[1]} ({foydalanuvchi[2]}) ga xabar yuborilmoqda...")
-        # SMS yoki e-mail yuborish logikasi shu joyga qo'shiladi
-        time.sleep(0.5)  # Demo uchun kutish
+    if not context.args:
+        await update.message.reply_text("📝 Xabar matnini kiriting:\n/send <xabar matni>")
+        return
     
-    print("\nXabarlar muvaffaqiyatli yuborildi!")
-    input("Davom etish uchun Enter tugmasini bosing...")
+    message_text = " ".join(context.args)
+    success, failed = await send_message_to_all_users(context, message_text)
+    
+    await update.message.reply_text(
+        f"📊 Xabar yuborish natijasi:\n\n"
+        f"✅ Muvaffaqiyatli: {success} ta\n"
+        f"❌ Muvaffaqiyatsiz: {failed} ta\n\n"
+        f"Jami foydalanuvchilar: {success + failed} ta"
+    )
 
-def foydalanuvchilarni_olish():
-    boglanma = sqlite3.connect('foydalanuvchilar.db')
-    kurs = boglanma.cursor()
-    kurs.execute("SELECT * FROM foydalanuvchilar")
-    natijalar = kurs.fetchall()
-    boglanma.close()
-    return natijalar
+def main():
+    updater = Updater(token=TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-def hisobot():
-    boglanma = sqlite3.connect('foydalanuvchilar.db')
-    kurs = boglanma.cursor()
-    
-    # Foydalanuvchilar soni
-    kurs.execute("SELECT COUNT(*) FROM foydalanuvchilar")
-    foydalanuvchilar_soni = kurs.fetchone()[0]
-    
-    print(f"\nJami foydalanuvchilar: {foydalanuvchilar_soni}")
-    
-    # Oxirgi 5 ta xabar
-    print("\nOxirgi 5 ta yuborilgan xabar:")
-    for row in kurs.execute("SELECT * FROM xabarlar ORDER BY yuborilgan_sana DESC LIMIT 5"):
-        print(f"{row[2]} | {row[3]} | {row[5]} ta foydalanuvchiga yuborilgan")
-    
-    boglanma.close()
-    input("\nDavom etish uchun Enter tugmasini bosing...")
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("send", send_to_all))
 
-def asosiy():
-    dbni_boshlash()
-    dasturni_boshlash()
-    maqolni_korsat()
-    
-    while True:
-        tanlov = menyuni_korsat()
-        
-        if tanlov == "1":
-            foydalanuvchilarni_korsat()
-        elif tanlov == "2":
-            xabar_yubor()
-        elif tanlov == "3":
-            hisobot()
-        elif tanlov == "4":
-            print("Dastur tugatildi. Xayr!")
-            break
-        else:
-            print("Noto'g'ri tanlov! Qaytadan urinib ko'ring.")
+    updater.start_polling()
+    print("🤖 Bot ishga tushdi...")
+    updater.idle()
 
-if __name__ == "__main__":
-    asosiy()
+if __name__ == '__main__':
+    main()
