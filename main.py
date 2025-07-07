@@ -107,13 +107,7 @@ async def handle_code_message(message: types.Message):
         await send_reklama_post(message.from_user.id, code)
         await increment_stat(code, "viewed")
 
-        stat = await get_code_stat(code)
-        await message.answer(
-            f"📊 <b>Kod statistikasi:</b>\n"
-            f"🔍 Qidirilgan: <b>{stat['searched']}</b>\n"
-            f"👁 Ko‘rilgan: <b>{stat['viewed']}</b>",
-            parse_mode="HTML"
-        )
+# Statistikani oddiy foydalanuvchiga ko‘rsatish qismi olib tashlandi
 
 # === Obuna tekshirish callback
 @dp.callback_query_handler(lambda c: c.data.startswith("check_sub:"))
